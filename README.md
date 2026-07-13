@@ -4,7 +4,9 @@ Small .NET 8 API that resolves a client code to its currently active HRMS API en
 
 ## Local run
 
-The real `.env` is intentionally ignored. Copy `.env.example` to `.env`, provide a least-privilege database account, then run:
+The real `appsettings.Development.json` is intentionally ignored. Copy
+`appsettings.Development.example.json` to `appsettings.Development.json`, provide a
+least-privilege database connection string, then run:
 
 ```powershell
 dotnet run
@@ -25,7 +27,9 @@ Only clients whose record is active and inside its UTC validity window are retur
 
 ## Coolify
 
-Deploy with the included Dockerfile and configure every variable from `.env.example` as Coolify environment variables/secrets. Do not commit or copy the local `.env` into the image.
+Deploy with the included Dockerfile and configure the connection string as the
+Coolify secret `ConnectionStrings__TenantRegistry`. Do not commit or copy the local
+`appsettings.Development.json` into the image.
 
 Health endpoints:
 

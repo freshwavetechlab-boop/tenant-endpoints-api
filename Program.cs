@@ -7,8 +7,6 @@ using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 using MySqlConnector;
 
-EnvFileLoader.Load(Path.Combine(Directory.GetCurrentDirectory(), ".env"));
-
 var builder = WebApplication.CreateBuilder(args);
 
 builder.WebHost.ConfigureKestrel(options =>
@@ -220,75 +218,29 @@ internal sealed class TenantRegistryOptions
 
     public static TenantRegistryOptions FromConfiguration(IConfiguration configuration)
     {
-        var host = Required(configuration, "TENANT_REGISTRY_DB_HOST");
-        var database = Required(configuration, "TENANT_REGISTRY_DB_NAME");
-        var user = Required(configuration, "TENANT_REGISTRY_DB_USER");
-        var password = Required(configuration, "TENANT_REGISTRY_DB_PASSWORD");
-        var portText = configuration["TENANT_REGISTRY_DB_PORT"] ?? "3306";
-        var sslModeText = configuration["TENANT_REGISTRY_DB_SSL_MODE"] ?? "Preferred";
+        var configuredConnectionString = configuration.GetConnectionString("TenantRegistry");
+        if (string.IsNullOrWhiteSpace(configuredConnectionString))
+            throw new InvalidOperationException("Connection string 'TenantRegistry' is not configured.");
 
-        if (!uint.TryParse(portText, out var port) || port is 0 or > 65535)
-            throw new InvalidOperationException("TENANT_REGISTRY_DB_PORT must be a valid TCP port.");
-
-        if (!Enum.TryParse<MySqlSslMode>(sslModeText, true, out var sslMode))
-            throw new InvalidOperationException("TENANT_REGISTRY_DB_SSL_MODE is invalid.");
-
-        var connectionString = new MySqlConnectionStringBuilder
+        var connectionStringBuilder = new MySqlConnectionStringBuilder(configuredConnectionString)
         {
-            Server = host,
-            Port = port,
-            Database = database,
-            UserID = user,
-            Password = password,
-            SslMode = sslMode,
-            AllowPublicKeyRetrieval = sslMode == MySqlSslMode.None,
             Pooling = true,
             MinimumPoolSize = 0,
             MaximumPoolSize = 20,
             ConnectionTimeout = 10,
             DefaultCommandTimeout = 10
-        }.ConnectionString;
+        };
 
-        return new TenantRegistryOptions { ConnectionString = connectionString };
-    }
-
-    private static string Required(IConfiguration configuration, string key)
-    {
-        var value = configuration[key]?.Trim();
-        return !string.IsNullOrWhiteSpace(value)
-            ? value
-            : throw new InvalidOperationException($"Required environment variable '{key}' is missing.");
-    }
-}
-
-internal static class EnvFileLoader
-{
-    public static void Load(string path)
-    {
-        if (!File.Exists(path))
-            return;
-
-        foreach (var sourceLine in File.ReadLines(path))
+        if (string.IsNullOrWhiteSpace(connectionStringBuilder.Server)
+            || string.IsNullOrWhiteSpace(connectionStringBuilder.Database)
+            || string.IsNullOrWhiteSpace(connectionStringBuilder.UserID))
         {
-            var line = sourceLine.Trim();
-            if (line.Length == 0 || line.StartsWith('#'))
-                continue;
-
-            var separatorIndex = line.IndexOf('=');
-            if (separatorIndex <= 0)
-                continue;
-
-            var key = line[..separatorIndex].Trim();
-            var value = line[(separatorIndex + 1)..].Trim();
-            if (value.Length >= 2
-                && ((value[0] == '"' && value[^1] == '"')
-                    || (value[0] == '\'' && value[^1] == '\'')))
-            {
-                value = value[1..^1];
-            }
-
-            if (string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable(key)))
-                Environment.SetEnvironmentVariable(key, value);
+            throw new InvalidOperationException("Connection string 'TenantRegistry' is incomplete.");
         }
+
+        if (connectionStringBuilder.SslMode == MySqlSslMode.None)
+            connectionStringBuilder.AllowPublicKeyRetrieval = true;
+
+        return new TenantRegistryOptions { ConnectionString = connectionStringBuilder.ConnectionString };
     }
 }
